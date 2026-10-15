@@ -1,12 +1,10 @@
-cat > .gitignore << 'EOF'
 build/
 install/
 log/
+data/
 *.bag
 *.db3
-data/
 __pycache__/
 *.pyc
 .vscode/
 .idea/
-EOF
