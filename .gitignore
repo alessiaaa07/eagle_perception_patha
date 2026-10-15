@@ -1,8 +1,12 @@
+cat > .gitignore << 'EOF'
 build/
 install/
 log/
+*.bag
+*.db3
+data/
 __pycache__/
 *.pyc
-.DS_Store
-data/
-data/
+.vscode/
+.idea/
+EOF
