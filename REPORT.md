@@ -115,4 +115,43 @@ Il risultato viene pubblicato nel messaggio `ProcessingTime` sul topic:
 ```
 
 Il budget disponibile è di 100 ms per scansione, poiché il LiDAR produce
-una
+una scansione ogni 100 ms.
+
+## Problemi incontrati
+
+Durante lo sviluppo è stato necessario capire come utilizzare correttamente
+la trasformazione tra il frame del LiDAR e quello del veicolo.
+
+Inizialmente i punti venivano elaborati direttamente nel frame del sensore.
+Tuttavia, il LiDAR non è montato esattamente  nell’origine del veicolo e non
+è perfettamente livellato.
+
+Per risolvere questo problema, il nodo utilizza `/tf_static` per ottenere la
+trasformazione da `lidar` a `base_link` prima di effettuare la rimozione
+del suolo e il clustering.
+
+Un altro aspetto importante è stato distinguere i coni dagli altri oggetti
+presenti nella scena. Per questo motivo, oltre alla rimozione del suolo,
+sono stati applicati dei filtri basati su dimensione e altezza dei cluster.
+
+## Possibili miglioramenti
+
+Alcuni miglioramenti possibili sono:
+
+- utilizzare l’intensità dei punti per distinguere i coni blu, gialli e arancioni;
+- migliorare la stima della posizione del cono sul suolo;
+- ottimizzare il tempo di elaborazione per ridurre i casi che superano 100 ms;
+- aggiungere un filtro temporale per ridurre falsi positivi tra scansioni consecutive;
+- rendere i parametri modificabili durante l’esecuzione del nodo.
+
+## Risultati
+Il nodo è stato testato riproducendo il bag `perception_bag`.
+
+Durante l’esecuzione, il nodo riceve le scansioni LiDAR, rimuove il suolo,
+raggruppa i punti rimanenti e pubblica le posizioni dei coni rilevati.
+
+I coni possono essere visualizzati in RViz tramite il topic:
+
+```text
+/perception/cones_markers
+```
