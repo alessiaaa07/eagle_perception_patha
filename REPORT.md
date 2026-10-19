@@ -155,3 +155,14 @@ I coni possono essere visualizzati in RViz tramite il topic:
 ```text
 /perception/cones_markers
 ```
+
+## AI Usage
+
+| Tool | What it was used for |
+|---|---|
+| Perplexity | Explained ROS 2 concepts, the project structure, Git commands and how to run the LiDAR bag |
+| Perplexity | Helped draft and structure the README and report |
+| Perplexity | Helped debug setup problems, such as the launch file and Git commands |
+| Perplexity | Suggested the cone detection pipeline: ground removal, clustering, cone filtering and visualization |
+
+The C++ node, its logic and the final implementation were reviewed, tested and adapted by me using the provided LiDAR bag.
