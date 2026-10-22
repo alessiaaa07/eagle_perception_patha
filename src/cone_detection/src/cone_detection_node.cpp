@@ -65,7 +65,9 @@ public:
     lidar_base_pub_ =
       this->create_publisher<sensor_msgs::msg::PointCloud2>(
         "/perception/lidar_base", 10);
-
+        cone_points_pub_ =
+  this->create_publisher<sensor_msgs::msg::PointCloud2>(
+    "/perception/cone_points", 10);
 
     point_cloud_sub_ = create_subscription<sensor_msgs::msg::PointCloud2>(
       "/lidar/points", 10,
@@ -151,51 +153,65 @@ public:
   }
 
 
-  bool isConeLike(const pcl::PointCloud<pcl::PointXYZ>::Ptr & cluster)
-  {
-    double min_x = std::numeric_limits<double>::max();
-    double max_x = std::numeric_limits<double>::lowest();
-    double min_y = std::numeric_limits<double>::max();
-    double max_y = std::numeric_limits<double>::lowest();
-    double min_z = std::numeric_limits<double>::max();
-    double max_z = std::numeric_limits<double>::lowest();
+  bool isConeLike(
+  const pcl::PointCloud<pcl::PointXYZ>::Ptr & cluster,
+  std::string & cone_type)
+{
+  double min_x = std::numeric_limits<double>::max();
+  double max_x = std::numeric_limits<double>::lowest();
+  double min_y = std::numeric_limits<double>::max();
+  double max_y = std::numeric_limits<double>::lowest();
+  double min_z = std::numeric_limits<double>::max();
+  double max_z = std::numeric_limits<double>::lowest();
 
-
-    for (const auto & point : cluster->points) {
-      min_x = std::min(min_x, static_cast<double>(point.x));
-      max_x = std::max(max_x, static_cast<double>(point.x));
-      min_y = std::min(min_y, static_cast<double>(point.y));
-      max_y = std::max(max_y, static_cast<double>(point.y));
-      min_z = std::min(min_z, static_cast<double>(point.z));
-      max_z = std::max(max_z, static_cast<double>(point.z));
-    }
-
-
-    const double width = max_x - min_x;
-    const double depth = max_y - min_y;
-    const double height = max_z - min_z;
-
-
-    const double max_cone_width =
-      get_parameter("max_cone_width").as_double();
-    const double max_cone_depth =
-      get_parameter("max_cone_depth").as_double();
-    const double min_cone_height =
-      get_parameter("min_cone_height").as_double();
-    const double max_cone_height =
-      get_parameter("max_cone_height").as_double();
-
-
-    const bool has_cone_proportions =
-      height >= width && height >= depth;
-
-
-    return has_cone_proportions &&
-           width <= max_cone_width &&
-           depth <= max_cone_depth &&
-           height >= min_cone_height &&
-           height <= max_cone_height;
+  for (const auto & point : cluster->points) {
+    min_x = std::min(min_x, static_cast<double>(point.x));
+    max_x = std::max(max_x, static_cast<double>(point.x));
+    min_y = std::min(min_y, static_cast<double>(point.y));
+    max_y = std::max(max_y, static_cast<double>(point.y));
+    min_z = std::min(min_z, static_cast<double>(point.z));
+    max_z = std::max(max_z, static_cast<double>(point.z));
   }
+
+  const double width = max_x - min_x;
+  const double depth = max_y - min_y;
+  const double height = max_z - min_z;
+
+  cone_type = "UNKNOWN";
+
+  if (height >= 0.40 && width >= 0.20) {
+    cone_type = "BIG";
+  } else if (height >= 0.15 && height < 0.40) {
+    cone_type = "SMALL";
+  }
+
+  const double min_cone_height =
+    get_parameter("min_cone_height").as_double();
+  const double max_cone_height =
+    get_parameter("max_cone_height").as_double();
+
+  const bool has_cone_proportions =
+    height >= width &&
+    height >= depth &&
+    width >= 0.05 &&
+    depth >= 0.05 &&
+    width <= 0.35 &&
+    depth <= 0.35;
+
+  const bool is_valid =
+    has_cone_proportions &&
+    height >= min_cone_height &&
+    height <= max_cone_height;
+
+  if (is_valid) {
+    RCLCPP_INFO(
+        get_logger(),
+        "Cone classification: type=%s w=%.2f d=%.2f h=%.2f",
+        cone_type.c_str(), width, depth, height);
+  }
+
+  return is_valid;
+}
 
 
 private:
@@ -342,13 +358,15 @@ private:
 
 
     int marker_id = 0;
-
+      pcl::PointCloud<pcl::PointXYZ>::Ptr cone_points(
+  new pcl::PointCloud<pcl::PointXYZ>());
 
     for (const auto & cluster : clusters) {
-      if (!isConeLike(cluster)) {
-        continue;
-      }
+      std::string cone_type;
 
+if (!isConeLike(cluster, cone_type)) {
+  continue;
+}
 
       double sum_x = 0.0;
       double sum_y = 0.0;
@@ -378,6 +396,7 @@ private:
       if (cone_range > max_cone_range) {
         continue;
       }
+      *cone_points += *cluster;
 
       double min_x = std::numeric_limits<double>::max();
       double max_x = std::numeric_limits<double>::lowest();
@@ -404,12 +423,37 @@ private:
         max_x - min_x, max_y - min_y, max_z - min_z);
 
       eagle_perception_interfaces::msg::Cone cone;
-      cone.position.x = cone_x;
-      cone.position.y = cone_y;
-      cone.position.z = 0.0;
+cone.position.x = cone_x;
+cone.position.y = cone_y;
+cone.position.z = 0.0;
+if (cone_type == "BIG") {
+  cone.type = 2;
+} else if (cone_type == "SMALL") {
+  cone.type = 1;
+} else {
+  cone.type = 0;
+}
+// Incertezza della posizione: cresce con la distanza
+double position_sigma = 0.05 + 0.05 * cone_range;
 
+// Incertezza sull'altezza: cresce con la distanza
+double height_sigma = 0.05 + 0.05 * cone_range;
+RCLCPP_INFO(
+    get_logger(),
+    "Cone covariance: sigma=%.2f var_xy=%.4f",
+    position_sigma,
+    position_sigma * position_sigma);
 
-      cone_array.cones.push_back(cone);
+// Covarianza 3x3: x, y, z
+std::array<double, 9> covariance{};
+
+covariance[0] = position_sigma * position_sigma;   // var(x)
+covariance[4] = position_sigma * position_sigma;   // var(y)
+covariance[8] = height_sigma * height_sigma;       // var(z)
+
+cone.covariance = covariance;
+
+cone_array.cones.push_back(cone);
 
 
       visualization_msgs::msg::Marker marker;
@@ -443,10 +487,18 @@ private:
 
       marker_array.markers.push_back(marker);
     }
+    
+
+  sensor_msgs::msg::PointCloud2 cone_points_msg;
+pcl::toROSMsg(*cone_points, cone_points_msg);
+cone_points_msg.header.stamp = msg->header.stamp;
+cone_points_msg.header.frame_id = "base_link";
+
+cone_points_pub_->publish(cone_points_msg);
 
     cone_array_pub_->publish(cone_array);
     marker_array_pub_->publish(marker_array);
-
+      
 
     RCLCPP_INFO(
       get_logger(),
@@ -473,7 +525,7 @@ private:
 
     RCLCPP_INFO(get_logger(), "Scan received; processing time: %.3f ms", elapsed_ms);
   }
-
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr cone_points_pub_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr non_ground_pub_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr lidar_base_pub_;
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr point_cloud_sub_;
