@@ -9,6 +9,8 @@
 #include <chrono>
 #include <limits>
 #include <memory>
+#include <algorithm>
+#include <vector>
 
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
@@ -67,16 +69,20 @@ public:
     tf_buffer_ = std::make_shared<tf2_ros::Buffer>(get_clock());
     tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
-    declare_parameter<double>("ground_z_min", 0.05);
-    declare_parameter<double>("ground_z_max", 0.60);
-    declare_parameter<double>("cluster_tolerance", 0.25);
-    declare_parameter<int>("min_cluster_size", 10);
-    declare_parameter<int>("max_cluster_size", 300);
-    declare_parameter<double>("max_cone_width", 0.50);
-    declare_parameter<double>("max_cone_depth", 0.50);
-    declare_parameter<double>("min_cone_height", 0.10);
-    declare_parameter<double>("max_cone_height", 0.60);
-    declare_parameter<double>("max_cone_range", 12.0);
+  declare_parameter<double>("ground_z_min", 0.05);
+declare_parameter<double>("ground_z_max", 0.60);
+declare_parameter<double>("cluster_tolerance", 0.25);
+declare_parameter<int>("min_cluster_size", 10);
+declare_parameter<int>("max_cluster_size", 300);
+declare_parameter<double>("min_cone_height", 0.10);
+declare_parameter<double>("max_cone_height", 0.60);
+declare_parameter<double>("small_cone_min_height", 0.12);
+declare_parameter<double>("big_cone_min_height", 0.40);
+declare_parameter<double>("big_cone_min_width", 0.20);
+declare_parameter<double>("min_cone_width", 0.05);
+declare_parameter<double>("max_cone_width", 0.35);
+declare_parameter<double>("max_cone_depth", 0.35);
+declare_parameter<double>("max_cone_range", 12.0);
 
     RCLCPP_INFO(get_logger(), "Cone detection node started");
   }
@@ -129,65 +135,74 @@ public:
     return clusters;
   }
 
-  bool isConeLike(
-    const pcl::PointCloud<pcl::PointXYZ>::Ptr & cluster,
-    std::string & cone_type)
-  {
-    double min_x = std::numeric_limits<double>::max();
-    double max_x = std::numeric_limits<double>::lowest();
-    double min_y = std::numeric_limits<double>::max();
-    double max_y = std::numeric_limits<double>::lowest();
-    double min_z = std::numeric_limits<double>::max();
-    double max_z = std::numeric_limits<double>::lowest();
+   bool isConeLike(
+  const pcl::PointCloud<pcl::PointXYZ>::Ptr & cluster,
+  std::string & cone_type)
+{
+  double min_x = std::numeric_limits<double>::max();
+  double max_x = std::numeric_limits<double>::lowest();
+  double min_y = std::numeric_limits<double>::max();
+  double max_y = std::numeric_limits<double>::lowest();
+  double min_z = std::numeric_limits<double>::max();
+  double max_z = std::numeric_limits<double>::lowest();
 
-    for (const auto & point : cluster->points) {
-      min_x = std::min(min_x, static_cast<double>(point.x));
-      max_x = std::max(max_x, static_cast<double>(point.x));
-      min_y = std::min(min_y, static_cast<double>(point.y));
-      max_y = std::max(max_y, static_cast<double>(point.y));
-      min_z = std::min(min_z, static_cast<double>(point.z));
-      max_z = std::max(max_z, static_cast<double>(point.z));
-    }
-
-    const double width = max_x - min_x;
-    const double depth = max_y - min_y;
-    const double height = max_z - min_z;
-
-    cone_type = "UNKNOWN";
-
-    if (height >= 0.40 && width >= 0.20) {
-      cone_type = "BIG";
-    } else if (height >= 0.12 && height < 0.40) {
-      cone_type = "SMALL";
-    }
-
-    const double min_cone_height =
-      get_parameter("min_cone_height").as_double();
-    const double max_cone_height =
-      get_parameter("max_cone_height").as_double();
-
-    const bool has_cone_proportions =
-      height >= width &&
-      height >= depth &&
-      width >= 0.05 &&
-      depth >= 0.05 &&
-      width <= 0.35 &&
-      depth <= 0.35;
-
-    const bool is_valid =
-      has_cone_proportions &&
-      height >= min_cone_height &&
-      height <= max_cone_height;
-
-    if (is_valid) {
-      RCLCPP_INFO(
-        get_logger(),
-        "Cone classification: type=%s w=%.2f d=%.2f h=%.2f",
-        cone_type.c_str(), width, depth, height);
-    }
-
-    return is_valid;
+  for (const auto & point : cluster->points) {
+    min_x = std::min(min_x, static_cast<double>(point.x));
+    max_x = std::max(max_x, static_cast<double>(point.x));
+    min_y = std::min(min_y, static_cast<double>(point.y));
+    max_y = std::max(max_y, static_cast<double>(point.y));
+    min_z = std::min(min_z, static_cast<double>(point.z));
+    max_z = std::max(max_z, static_cast<double>(point.z));
   }
+
+  const double width = max_x - min_x;
+  const double depth = max_y - min_y;
+  const double height = max_z - min_z;
+
+  const double small_cone_min_height =
+    get_parameter("small_cone_min_height").as_double();
+  const double big_cone_min_height =
+    get_parameter("big_cone_min_height").as_double();
+  const double big_cone_min_width =
+    get_parameter("big_cone_min_width").as_double();
+
+  cone_type = "UNKNOWN";
+
+  if (height >= big_cone_min_height && width >= big_cone_min_width) {
+    cone_type = "BIG";
+  } else if (
+    height >= small_cone_min_height &&
+    height < big_cone_min_height)
+  {
+    cone_type = "SMALL";
+  }
+
+  const double min_cone_height =
+    get_parameter("min_cone_height").as_double();
+  const double max_cone_height =
+    get_parameter("max_cone_height").as_double();
+  const double min_cone_width =
+    get_parameter("min_cone_width").as_double();
+  const double max_cone_width =
+    get_parameter("max_cone_width").as_double();
+  const double max_cone_depth =
+    get_parameter("max_cone_depth").as_double();
+
+  const bool has_cone_proportions =
+    height >= width &&
+    height >= depth &&
+    width >= min_cone_width &&
+    depth >= min_cone_width &&
+    width <= max_cone_width &&
+    depth <= max_cone_depth;
+
+  const bool is_valid =
+    has_cone_proportions &&
+    height >= min_cone_height &&
+    height <= max_cone_height;
+
+  return is_valid;
+}
 
 private:
   void pointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg)
@@ -325,18 +340,38 @@ private:
         continue;
       }
 
-      double sum_x = 0.0;
-      double sum_y = 0.0;
+     // Centro del cono sulla base: mediana dei punti
+// nella metà inferiore del cluster.
+double cluster_min_z = std::numeric_limits<double>::max();
+double cluster_max_z = std::numeric_limits<double>::lowest();
 
-      for (const auto & point : cluster->points) {
-        sum_x += point.x;
-        sum_y += point.y;
-      }
+for (const auto & point : cluster->points) {
+  cluster_min_z = std::min(cluster_min_z, static_cast<double>(point.z));
+  cluster_max_z = std::max(cluster_max_z, static_cast<double>(point.z));
+}
 
-      const size_t cluster_size = cluster->points.size();
+const double z_mid = 0.5 * (cluster_min_z + cluster_max_z);
 
-      const double cone_x = sum_x / cluster_size;
-      const double cone_y = sum_y / cluster_size;
+std::vector<double> base_xs;
+std::vector<double> base_ys;
+
+for (const auto & point : cluster->points) {
+  if (point.z <= z_mid) {
+    base_xs.push_back(static_cast<double>(point.x));
+    base_ys.push_back(static_cast<double>(point.y));
+  }
+}
+
+if (base_xs.empty()) {
+  continue;
+}
+
+std::sort(base_xs.begin(), base_xs.end());
+std::sort(base_ys.begin(), base_ys.end());
+
+const size_t n = base_xs.size();
+const double cone_x = base_xs[n / 2];
+const double cone_y = base_ys[n / 2];
 
       const double max_cone_range =
         get_parameter("max_cone_range").as_double();

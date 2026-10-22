@@ -9,7 +9,7 @@ def generate_launch_description():
     config_file = os.path.join(
         get_package_share_directory('cone_detection'),
         'config',
-        'cone_detection.yaml'
+        'cone_detection.yaml',
     )
 
     cone_detection_node = Node(
@@ -17,9 +17,7 @@ def generate_launch_description():
         executable='cone_detection_node',
         name='cone_detection_node',
         output='screen',
-        parameters=[config_file]
+        parameters=[config_file],
     )
 
-    return LaunchDescription([
-        cone_detection_node
-    ])
+    return LaunchDescription([cone_detection_node])
