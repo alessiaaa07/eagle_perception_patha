@@ -181,7 +181,7 @@ public:
 
   if (height >= 0.40 && width >= 0.20) {
     cone_type = "BIG";
-  } else if (height >= 0.15 && height < 0.40) {
+  } else if (height >= 0.12 && height < 0.40) {
     cone_type = "SMALL";
   }
 
@@ -358,6 +358,10 @@ private:
 
 
     int marker_id = 0;
+      int small_count = 0;
+int big_count = 0;
+int unknown_count = 0;
+
       pcl::PointCloud<pcl::PointXYZ>::Ptr cone_points(
   new pcl::PointCloud<pcl::PointXYZ>());
 
@@ -397,7 +401,13 @@ if (!isConeLike(cluster, cone_type)) {
         continue;
       }
       *cone_points += *cluster;
-
+      if (cone_type == "SMALL") {
+  small_count++;
+} else if (cone_type == "BIG") {
+  big_count++;
+} else {
+  unknown_count++;
+}
       double min_x = std::numeric_limits<double>::max();
       double max_x = std::numeric_limits<double>::lowest();
       double min_y = std::numeric_limits<double>::max();
@@ -476,10 +486,21 @@ cone_array.cones.push_back(cone);
       marker.scale.z = 0.25;
 
 
-      marker.color.r = 1.0;
-      marker.color.g = 0.0;
-      marker.color.b = 0.0;
-      marker.color.a = 1.0;
+      if (cone_type == "SMALL") {
+  marker.color.r = 0.0;
+  marker.color.g = 1.0;
+  marker.color.b = 0.0;
+} else if (cone_type == "BIG") {
+  marker.color.r = 1.0;
+  marker.color.g = 0.5;
+  marker.color.b = 0.0;
+} else {
+  marker.color.r = 0.5;
+  marker.color.g = 0.5;
+  marker.color.b = 0.5;
+}
+
+marker.color.a = 1.0;
 
 
       marker.lifetime = rclcpp::Duration::from_seconds(0.5);
@@ -507,7 +528,12 @@ cone_points_pub_->publish(cone_points_msg);
       ground_count,
       clusters.size(),
       cone_array.cones.size());
-
+      RCLCPP_INFO(
+  get_logger(),
+  "Cones published: %d SMALL, %d BIG, %d UNKNOWN",
+  small_count,
+  big_count,
+  unknown_count);
 
     const auto end = std::chrono::steady_clock::now();
     const double elapsed_ms =
