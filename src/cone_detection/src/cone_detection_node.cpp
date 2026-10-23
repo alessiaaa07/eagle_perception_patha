@@ -69,8 +69,7 @@ public:
     tf_buffer_ = std::make_shared<tf2_ros::Buffer>(get_clock());
     tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
-  declare_parameter<double>("ground_z_min", 0.05);
-declare_parameter<double>("ground_z_max", 0.60);
+  
 declare_parameter<double>("cluster_tolerance", 0.25);
 declare_parameter<int>("min_cluster_size", 10);
 declare_parameter<int>("max_cluster_size", 300);
@@ -437,11 +436,18 @@ const double cone_y = base_ys[n / 2];
       marker.scale.x = 0.25;
       marker.scale.y = 0.25;
       marker.scale.z = 0.25;
-
-      marker.color.r = 1.0;
-      marker.color.g = 0.0;
-      marker.color.b = 0.0;
       marker.color.a = 1.0;
+      if (cone_y > 0.0) {
+        
+        marker.color.r = 0.0;
+        marker.color.g = 0.0;
+        marker.color.b = 1.0;
+      } else {
+        
+        marker.color.r = 1.0;
+        marker.color.g = 1.0;
+        marker.color.b = 0.0;
+      }
 
       marker.lifetime = rclcpp::Duration::from_seconds(0.5);
 
