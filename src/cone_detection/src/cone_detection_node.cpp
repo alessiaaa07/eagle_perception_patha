@@ -340,8 +340,7 @@ private:
         continue;
       }
 
-     // Centro del cono sulla base: mediana dei punti
-// nella metà inferiore del cluster.
+     
 double cluster_min_z = std::numeric_limits<double>::max();
 double cluster_max_z = std::numeric_limits<double>::lowest();
 
@@ -406,10 +405,9 @@ const double cone_y = base_ys[n / 2];
         cone.type = 0;
       }
 
-      // Incertezza della posizione: cresce con la distanza
       double position_sigma = 0.05 + 0.05 * cone_range;
 
-      // Incertezza sull'altezza: cresce con la distanza
+      
       double height_sigma = 0.05 + 0.05 * cone_range;
 
       // Covarianza 3x3: x, y, z
