@@ -1,7 +1,5 @@
 cone_detection_node:
   ros__parameters:
-    ground_z_min: 0.05
-    ground_z_max: 0.60
     cluster_tolerance: 0.25
     min_cluster_size: 10
     max_cluster_size: 300
