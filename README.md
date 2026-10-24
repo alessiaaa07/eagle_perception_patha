@@ -1,55 +1,100 @@
-# Rilevamento dei coni dal LiDAR
+# E-Agle TRT AS — Perception Software Task (Path A: Cone Detection)
 
-Questo progetto implementa un nodo ROS 2 in C++ per il rilevamento dei coni
-a partire dalle nuvole di punti del LiDAR.
+ROS 2 Humble C++ node that detects cones from a LiDAR recording and publishes their positions in the vehicle frame (`base_link`).
 
-Il nodo rimuove il suolo, raggruppa i punti rimanenti, filtra i cluster
-in base a dimensione e forma, e pubblica le posizioni dei coni nel frame
-`base_link`.
+## Pipeline
 
-## Requisiti
+1. Subscribe to `/lidar/points` (frame `lidar`);
+2. Transform the scan into `base_link` using the static transform provided by the bag;
+3. Remove the ground plane with RANSAC;
+4. Cluster the remaining points (Euclidean clustering);
+5. Filter clusters by cone-like proportions (height, width, depth, range);
+6. Estimate each cone's ground position and classify it (small / big);
+7. Publish cones, RViz markers, and per-scan processing time.
 
-- Docker
-- Docker Compose
-- Git
-
-## Scaricare il bag
-
-Scaricare il file ZIP dal link fornito nel task ed estrarlo nella cartella:
+## Repository structure
 
 ```text
-data/
+eagle_perception/
+├── docker/
+│   └── Dockerfile
+├── src/
+│   ├── cone_detection/
+│   │   ├── config/
+│   │   │   └── cone_detection.yaml
+│   │   ├── launch/
+│   │   │   └── cone_detection.launch.py
+│   │   ├── src/
+│   │   │   └── cone_detection_node.cpp
+│   │   ├── CMakeLists.txt
+│   │   └── package.xml
+│   └── eagle_perception_interfaces/
+│       ├── msg/
+│       │   ├── Cone.msg
+│       │   ├── ConeArray.msg
+│       │   └── ProcessingTime.msg
+│       ├── CMakeLists.txt
+│       ├── package.xml
+│       └── LICENSE
+├── .gitignore
+├── README.md
+└── REPORT.md
 ```
 
-La cartella finale deve contenere:
+## Requirements
+
+- Docker
+- A running X server (Linux desktop) to display RViz
+
+## 1. Get the LiDAR recording
+
+Download the bag from the link provided in the task description, unzip it, and place it at:
 
 ```text
 data/perception_bag/
 ```
 
-## Costruire l’immagine
+The bag is not included in this repository.
 
-Dalla cartella principale del repository:
+## 2. Build the Docker image
 
-```bash
-docker compose build
-```
-
-## Avviare il container
+From the repository root:
 
 ```bash
-docker compose up -d
+docker build -t eagle-perception:humble -f docker/Dockerfile .
 ```
 
-Entrare nel container:
+## 3. Create and enter the container
 
 ```bash
-docker compose exec eagle bash
+xhost +local:docker
+docker run -it \
+  --name eagle_perception \
+  --user eagle \
+  --env DISPLAY=$DISPLAY \
+  --volume /tmp/.X11-unix:/tmp/.X11-unix \
+  --volume ~/eagle_perception:/home/eagle/ws \
+  --volume ~/eagle_perception/data:/home/eagle/data \
+  --network host \
+  eagle-perception:humble \
+  bash
 ```
 
-## Compilare la workspace
+To re-enter the container in later sessions, first start it:
 
-Dentro il container:
+```bash
+docker start eagle_perception
+```
+
+Then enter it:
+
+```bash
+docker exec -it eagle_perception bash
+```
+
+## 4. Build the workspace
+
+Inside the container:
 
 ```bash
 cd ~/ws
@@ -57,35 +102,54 @@ colcon build
 source install/setup.bash
 ```
 
-## Avviare il nodo
+## 5. Run the perception node
 
-In un terminale del container:
+Open a separate terminal, enter the container and play the bag:
 
 ```bash
+docker exec -it eagle_perception bash
+ros2 bag play data/perception_bag --loop
+```
+
+In another terminal:
+
+```bash
+docker exec -it eagle_perception bash
 cd ~/ws
 source install/setup.bash
 ros2 launch cone_detection cone_detection.launch.py
 ```
 
-## Riprodurre il bag
+## 6. Visualize in RViz
 
-In un secondo terminale del container:
-
-```bash
-cd ~/data
-ros2 bag play perception_bag
-```
-
-## Visualizzare i risultati
-
-In un terzo terminale del container:
+In another terminal:
 
 ```bash
+docker exec -it eagle_perception bash
 rviz2
 ```
 
-In RViz impostare il **Fixed Frame** su `base_link`, quindi aggiungere:
+In RViz set **Fixed Frame** to `base_link`, then add:
 
-- il point cloud del LiDAR;
-- il topic `/perception/cones_markers`;
-- il topic `/perception/cones`, se si vuole leggere il messaggio.
+- `/perception/lidar_base` (PointCloud2) — scan transformed into the vehicle frame;
+- `/perception/cones_markers` (MarkerArray) — detected cones.
+
+## Topics
+
+| Topic | Type | Description |
+|---|---|---|
+| `/lidar/points` | `sensor_msgs/msg/PointCloud2` | Input: raw LiDAR scan, frame `lidar` |
+| `/perception/cones` | `eagle_perception_interfaces/msg/ConeArray` | Detected cones, frame `base_link` |
+| `/perception/cones_markers` | `visualization_msgs/msg/MarkerArray` | Cone markers for RViz |
+| `/perception/processing_time` | `eagle_perception_interfaces/msg/ProcessingTime` | Processing time per scan (ms) |
+| `/perception/lidar_base` | `sensor_msgs/msg/PointCloud2` | Scan transformed into `base_link` |
+| `/perception/non_ground` | `sensor_msgs/msg/PointCloud2` | Points after ground removal |
+| `/perception/cone_points` | `sensor_msgs/msg/PointCloud2` | Points belonging to detected cones |
+
+## Parameters
+
+All thresholds are loaded from `src/cone_detection/config/cone_detection.yaml`.
+
+## Results
+
+On the provided bag, the node typically detects 4-7 cones per scan, with a processing time of about 60-90 ms per frame.
