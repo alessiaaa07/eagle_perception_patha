@@ -46,12 +46,13 @@ target_link_libraries(cone_detection_node
 install(TARGETS cone_detection_node
   DESTINATION lib/${PROJECT_NAME}
 )
-install(
-  DIRECTORY config launch
-  DESTINATION share/${PROJECT_NAME}
-)
+
 ament_package()
 install(
   DIRECTORY config
+  DESTINATION share/${PROJECT_NAME}
+)
+install(
+  DIRECTORY config launch
   DESTINATION share/${PROJECT_NAME}
 )
