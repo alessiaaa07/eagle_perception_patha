@@ -150,6 +150,12 @@ In RViz set **Fixed Frame** to `base_link`, then add:
 
 All thresholds are loaded from `src/cone_detection/config/cone_detection.yaml`.
 
+Parameters can also be changed at runtime without restarting the node, for example:
+
+```bash
+ros2 param set /cone_detection_node max_cone_range 6.0
+```
+
 ## Results
 
 On the provided bag, the node typically detects 4-7 cones per scan, with a processing time of about 60-90 ms per frame.

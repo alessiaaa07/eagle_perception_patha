@@ -12,4 +12,3 @@ cone_detection_node:
     max_cone_width: 0.35
     max_cone_depth: 0.35
     max_cone_range: 12.0
-    
