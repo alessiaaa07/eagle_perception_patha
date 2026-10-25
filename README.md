@@ -43,8 +43,8 @@ eagle_perception/
 
 ## Requirements
 
-- Docker
-- A running X server (Linux desktop) to display RViz
+- Docker;
+- A running X server (Linux desktop) to display RViz.
 
 ## 1. Get the LiDAR recording
 
@@ -80,13 +80,13 @@ docker run -it \
   bash
 ```
 
-To re-enter the container in later sessions, first start it:
+To re-enter the container in later sessions, first:
 
 ```bash
 docker start eagle_perception
 ```
 
-Then enter it:
+Then:
 
 ```bash
 docker exec -it eagle_perception bash
@@ -131,8 +131,11 @@ rviz2
 
 In RViz set **Fixed Frame** to `base_link`, then add:
 
-- `/perception/lidar_base` (PointCloud2) — scan transformed into the vehicle frame;
-- `/perception/cones_markers` (MarkerArray) — detected cones.
+- `/lidar/points` (PointCloud2) - raw scan from LiDAR;
+- `/perception/lidar_base` (PointCloud2) - scan transformed into the vehicle frame;
+- `/perception/non_ground` (PointCloud2) - points after ground removal;
+- `/perception/cone_points` (PointCloud2) - points belonging to detected cones;
+- `/perception/cones_markers` (MarkerArray) - detected cones.
 
 ## Topics
 
@@ -158,4 +161,4 @@ ros2 param set /cone_detection_node max_cone_range 6.0
 
 ## Results
 
-On the provided bag, the node typically detects 4-7 cones per scan, with a processing time of about 60-90 ms per frame.
+On the provided bag, the node typically detects few cones per scan, with a processing time of about 60-90 ms per frame.

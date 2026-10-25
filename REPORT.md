@@ -10,7 +10,7 @@ Team Eagle gave us a Dockerfile and a LiDAR bag, and explicitly no package skele
 
 Before writing any code, I spent time researching the tools I would need. I watched videos on YouTube about how Docker works, ROS 2 and how GitHub is structured and the specified commands — including how to write a README — and I read the official documentation of ROS 2, Docker and Git to compare what I was watching with the documentation and build a better background.
 
-This preliminary study was important. Thanks to the videos and documentation, when I later had to create the workspace or fix build errors, I understood what the tools were doing instead of just copying commands without knowing why.
+This preliminary research was important. Thanks to the videos and documentation, when I later had to create the workspace or fix build errors, I understood what the tools were doing instead of just copying commands without knowing why.
 
 ## 3. Setting up the environment
 
@@ -19,11 +19,13 @@ The first practical step was creating the project structure:
 ```
 ~/eagle_perception/
 ├── docker/
-├── ws/
-└── data/
+├── src/
+├── data/
+├── README.md
+└── REPORT.md
 ```
 
-I used Docker from the terminal, with docker run commands, no Docker Desktop or Docker Compose. This kept the setup simple: I only needed Docker Engine, the Dockerfile provided by Eagle, and a few command-line options to mount my workspace and the bag inside the container and forward the display for RViz. I mounted my workspace at /home/eagle/ws and the bag at /home/eagle/data, and used xhost to allow the container to open RViz on my display. The container could be started, stopped and restarted without affecting my system, and the same commands worked every time. 
+I used Docker from the terminal, with docker run commands, no Docker Desktop or Docker Compose. This kept the setup simple: I only needed Docker Engine, the Dockerfile provided by Eagle, and a few command-line options to mount my workspace and the bag inside the container and forward the display for RViz. I mounted the repository root at /home/eagle/ws (so the workspace is the repository itself) and the bag folder at /home/eagle/data, and used xhost to allow the container to open RViz on my display. The container could be started, stopped and restarted without affecting my system, and the same commands worked every time. 
 
 Inside the workspace I created the two packages required by the task:
 
@@ -73,7 +75,7 @@ lidar_to_base = tf_buffer_->lookupTransform(
 const Eigen::Vector3d point_base = transform * point_lidar;
 
 
-Once I added the transform, the point clouds aligned correctly in RViz, and the rest of the pipeline became much clearer. It also explained why the first results looked wrong: without the transform, the cones were simply in the wrong place.
+Once I added the transform, the point clouds aligned correctly in RViz, and the rest of the pipeline became much clearer. It also explained why the first results looked wrong: without the transform, the cones were in the wrong place.
 
 ## 7. Removing the ground: from a filter to RANSAC
 
@@ -91,13 +93,12 @@ extract.setIndices(ground_indices);
 extract.setNegative(true);       
 extract.filter(*cloud_non_ground);
 
-RANSAC finds the ground and removes it. After this change, the results were much cleaner and easier to work with.
 
 ## 8. Finding the cones: clustering and filtering
 
-After removing the ground, the remaining points still included barriers, people, buildings and noise. The next step was Euclidean clustering: points that are close to each other are grouped into a single cluster, using a KD-tree to make the search efficient.
+After removing the ground, the remaining points still included barriers, people, buildings and noise. The next step was Euclidean clustering: points that are close to each other are grouped into a single cluster, also using a KD-tree.
 
-But not every cluster is a cone. For each cluster I computed its width, depth and height, and applied a geometric filter: a cone is taller than it is wide, and its dimensions must stay within plausible limits. This filter removes low, wide shapes (barrier pieces, ground noise) and objects that are too large.
+But not every cluster is a cone. For each cluster I computed its width, depth and height, and applied a geometric filter: a cone is taller than it is wide, and its dimensions must stay within some limits. This filter removes low, wide shapes (barrier pieces, ground noise) and objects that are too large.
 
 For the classification, I distinguished:
 - **BIG** cones: height at least 40 cm and width at least 20 cm;
@@ -126,7 +127,7 @@ A cone at 2 metres is estimated more reliably than one at 10 metres. For this re
 
 double position_sigma = 0.05 + 0.05 * cone_range;
 
-The covariance is a 3x3 matrix that describes how uncertain the x, y and z position is. In this way, we can treat distant cones with more caution.
+The covariance is a 3x3 matrix that describes how uncertain the x, y and z position is. In this way, I can treat distant cones with more caution.
 
 
 covariance[0] = position_sigma * position_sigma;  
@@ -137,7 +138,7 @@ covariance[8] = height_sigma * height_sigma;
 
 The task suggested, as a nice-to-have, distinguishing blue from yellow cones using the intensity of the points. Since I had some extra time, I wanted to try to distinguish cones by their colour, understand how to do it, and challenge myself to see if I could do it. First I distinguished blue and yellow cones, then I went further and tried to detect the big orange cones of the start line.
 
-I tried several rules to detect the orange cones. The most promising one combined the cone size, its distance and the intensity of its points:
+I tried different options to detect the orange cones. The most promising one combined the cone size, its distance and the intensity of its points:
 
 if (cone_type == "BIG" &&
     cone_range < 6.0 &&
@@ -146,30 +147,28 @@ if (cone_type == "BIG" &&
   cone_color = 3;  // orange
 }
 
-This rule matched some start-line cones, but it also matched large blue or yellow cones that happened to be close and reflective. After several attempts, my conclusion was honest: with geometry and intensity alone, I cannot reliably separate orange cones from the other cones or from other objects.
+This rule matched some start-line cones, but it also matched blue or yellow cones that happened to be close. After several attempts, I couldn't separate orange cones from the other cones or from other objects.
 
 I decided to disable the orange rule and keep only a blue/yellow classification based on the side of the track: blue on the left (y > 0), yellow on the right (y < 0). This was a useful failure.
 
 
 ## 12. Practical problems along the way
 
-Beyond the conceptual difficulties, I hit the usual practical problems:
+Beyond the conceptual difficulties, I had the usual practical problems:
 
 - A parameter read before being declared, which crashed the node at startup;
 
 - PCL includes not configured in CMake, which broke the build;
 
-- A source file pasted only partially, which produced a confusing expected '}' error;
+- A source file pasted only partially, which produced confusing unexpected errors;
 
 - A topic that seemed not to exist because the node was not running;
 
-- The confusion between paths inside the container (/home/eagle/ws) and on my own machine (~/eagle_perception);
-
 - A package that seemed missing (Package 'cone_detection' not found) because the workspace had not been rebuilt or sourced correctly.
 
-At some point I also ended up with a duplicated copy of the workspace, which created confusion about which version of the code I was editing and building. We removed the duplicate, thanks also to Angelo, and kept a single workspace mounted inside the container, so that every edit in VS Code was immediately the one being compiled. This taught me to keep one clear source of truth for the code.
+At some point I also ended up with a duplicated copy of the workspace, which created confusion about which version of the code I was editing and building. I removed the duplicate, thanks also to Angelo, and kept a single workspace mounted inside the container, so that every edit in VS Code was immediately the one being compiled. This taught me to keep one clear source of truth for the code.
 
-Another recurring issue was file ownership: some files inside .git and in the build/ and install/ folders belonged to root, probably because of an earlier sudo command or Docker running as root. This blocked both git commit/git push and colcon build until we fixed the ownership with:
+Another recurring issue was file ownership: some files inside .git and in the build/ and install/ folders belonged to root,  because of an earlier sudo command or Docker running as root. This blocked both git commit/git push and colcon build until I fixed the ownership with:
 
 sudo chown -R eagle:eagle /home/eagle/ws
 
@@ -179,9 +178,9 @@ xhost +local:docker
 
 Without this, RViz could not open a window and the visualisation was not possible.
 
-I also had to debug TF-related problems: sometimes the transform between lidar and base_link was not available at the expected time, and the node had to handle this gracefully instead of crashing.
+I also had to deal with TF problems: sometimes the transform from lidar to base_link was not ready yet when the node started, so the first scans could not be transformed. Instead of crashing, the node simply waits and skips those scans until the transform becomes available.
 
-None of these problems were conceptually hard, but each one taught me the same lesson: before changing code, isolate the problem. Is it the build, the bag, the topic, the container, the permissions, the display, or the logic?
+None of these problems were conceptually hard, but each one taught me the same lesson: before changing code, isolate the problem. 
 
 ## 13. Visualising and verifying the result
 
@@ -211,7 +210,7 @@ git add README.md
 git commit -m "Finalize README"
 git push
 
-At one point, some files inside .git belonged to root, which blocked commits and pushes until we fixed the ownership:
+At one point, some files inside .git belonged to root, which blocked commits and pushes until I fixed the ownership:
 
 sudo chown -R eagle:eagle /home/eagle/ws
 
@@ -237,8 +236,5 @@ I would also improve the cone shape check, to make the cone detection more robus
 
 | Tool | What it was used for |
 |---|---|
-| Perplexity | Explained concepts, project structure, and helped me with the C++ node and parts of the code |
-| Perplexity | Helped at the beginning with code in specific files and with debugging |
-| Gemini     | Helped with the typical structure of a README and reviewed my C++ code |
-| Perplexity | Discussed the detection pipeline and the colour-classification attempt |
-
+| Perplexity | Explained concepts, project structure, helped with the C++ node, debugging, and the colour-classification attempt |
+| Gemini | Helped with the typical structure of a README and reviewed my C++ code |
